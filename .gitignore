@@ -1,2 +1,3 @@
-node_modules
-backend/deep_learning/model/Signature_verify_model.h5
+node_modules/
+backend/deep_learning/model/
+*.h5
