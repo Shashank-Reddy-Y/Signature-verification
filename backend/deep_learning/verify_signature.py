@@ -6,9 +6,8 @@ from flask_cors import CORS
 import cv2
 import base64
 from pymongo import MongoClient
+import urllib.parse
 from dotenv import load_dotenv
-
-# TFLite Runtime (Super lightweight!)
 import tflite_runtime.interpreter as tflite
 
 load_dotenv()
@@ -18,19 +17,24 @@ if not MONGO_URI:
     raise ValueError("MONGO_URI environment variable not set")
 
 mongo_client = MongoClient(MONGO_URI)
-db_name = os.getenv("MONGO_DB_NAME", "bank_data")
+
+# Safely extract the default database from the URI, or fallback to 'test' (Mongoose default)
+try:
+    default_db = mongo_client.get_default_database().name
+except:
+    default_db = "test"
+
+db_name = os.getenv("MONGO_DB_NAME", default_db)
 db = mongo_client[db_name]
 collection = db.accounts
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 MODEL_DIR = os.path.join(BASE_DIR, "model")
-# Pointing to our newly created TFLite model
 MODEL_PATH = os.path.join(MODEL_DIR, "feature_extractor.tflite")
 
 if not os.path.exists(MODEL_PATH):
     raise FileNotFoundError(f"Missing model file: {MODEL_PATH}. Please upload the .tflite file.")
 
-# --- TFLITE INITIALIZATION ---
 interpreter = tflite.Interpreter(model_path=MODEL_PATH)
 interpreter.allocate_tensors()
 input_details = interpreter.get_input_details()
@@ -45,10 +49,15 @@ def health():
 
 def retrieve_signature_bytes(account_number):
     record = collection.find_one({"accountNumber": str(account_number)})
+    
     if record and "image" in record:
         signature_data = record["image"]
         if isinstance(signature_data, str): 
+            # Cleanly split off the base64 prefix if the frontend sent it
+            if "," in signature_data:
+                signature_data = signature_data.split(",")[1]
             signature_data = base64.b64decode(signature_data)
+            
         return signature_data
     else:
         raise ValueError("Signature not found in the database.")
@@ -58,17 +67,13 @@ def preprocess_image_from_memory(image_bytes):
     img = cv2.imdecode(img_array, cv2.IMREAD_COLOR) 
     img = cv2.resize(img, (224, 224))
     
-    # TFLite expects a very specific format (float32)
     img_array = img.astype(np.float32)
     img_array = np.expand_dims(img_array, axis=0) / 255.0
     return img_array
 
 def extract_features(img_array):
-    # Set the tensor to point to the input data to be inferred
     interpreter.set_tensor(input_details[0]['index'], img_array)
-    # Run the inference
     interpreter.invoke()
-    # Extract the output
     return interpreter.get_tensor(output_details[0]['index']).flatten()
 
 @app.route('/api/signature/verify', methods=['POST'])
@@ -86,7 +91,6 @@ def verify_signature():
         stored_image = preprocess_image_from_memory(stored_signature_bytes)
         verifying_image = preprocess_image_from_memory(verifying_signature_bytes)
 
-        # Use the TFLite extraction function
         stored_embedding = extract_features(stored_image)
         verifying_embedding = extract_features(verifying_image)
 
