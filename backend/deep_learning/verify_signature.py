@@ -1,23 +1,47 @@
 import numpy as np
 import os
+import gdown
 import uuid
 from flask import Flask, request, jsonify
 from tensorflow.keras.models import Model, load_model
 from tensorflow.keras.preprocessing import image
 from sklearn.metrics.pairwise import cosine_similarity
 from flask_cors import CORS
-import matplotlib.pyplot as plt
 import cv2
 import base64
 from pymongo import MongoClient
 
 # MongoDB connection
-mongo_client = MongoClient(os.getenv("MONGO_URI"))
+MONGO_URI = os.getenv("MONGO_URI")
+
+if not MONGO_URI:
+    raise ValueError("MONGO_URI environment variable not set")
+
+mongo_client = MongoClient(MONGO_URI)
 db = mongo_client.yourdb
 collection = db.accounts
 
-# Load the pre-trained model
-trained_model = load_model(r"model/Signature_verify_model.h5")
+
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+
+MODEL_DIR = os.path.join(BASE_DIR, "models")
+
+os.makedirs(MODEL_DIR, exist_ok=True)
+
+MODEL_PATH = os.path.join(
+    MODEL_DIR,
+    "Signature_verify_model.h5"
+)
+
+if not os.path.exists(MODEL_PATH):
+
+    file_id = "1IcDnVXyn1oYnBLhdOXHofkhj4zWv68Ap"
+
+    url = f"https://drive.google.com/uc?id={file_id}"
+
+    gdown.download(url, MODEL_PATH, quiet=False, fuzzy=True)
+
+trained_model = load_model(MODEL_PATH)
 
 # Create Flask app
 app = Flask(__name__)
@@ -84,8 +108,11 @@ def verify_signature():
 
         # Calculate cosine similarity
         similarity = cosine_similarity([stored_embedding], [verifying_embedding])[0][0]
-        os.remove(stored_signature_path)
-        os.remove(verifying_signature_path)
+        if os.path.exists(stored_signature_path):
+            os.remove(stored_signature_path)
+            
+        if os.path.exists(verifying_signature_path):
+            os.remove(verifying_signature_path)
 
         # Threshold for decision
         threshold = 0.8
