@@ -23,7 +23,7 @@ db = mongo_client[db_name]
 collection = db.accounts
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-MODEL_DIR = os.path.join(BASE_DIR, "models")
+MODEL_DIR = os.path.join(BASE_DIR, "model")
 # Pointing to our newly created TFLite model
 MODEL_PATH = os.path.join(MODEL_DIR, "feature_extractor.tflite")
 
