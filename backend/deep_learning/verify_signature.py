@@ -37,9 +37,9 @@ if not os.path.exists(MODEL_PATH):
 
     file_id = "1IcDnVXyn1oYnBLhdOXHofkhj4zWv68Ap"
 
-    url = f"https://drive.google.com/uc?id={file_id}"
+    url = f"https://drive.google.com/uc?export=download&id={file_id}"
 
-    gdown.download(url, MODEL_PATH, quiet=False, fuzzy=True)
+    gdown.download(url, MODEL_PATH, quiet=False)
 
 trained_model = load_model(MODEL_PATH)
 
