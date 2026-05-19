@@ -13,6 +13,11 @@ const VerificationPage = () => {
   const [error, setError] = useState('');
   const [showModal, setShowModal] = useState(false);
 
+  // --- DEPLOYMENT FIX: Dynamic routing for BOTH backends ---
+  const nodeApiUrl = process.env.REACT_APP_NODE_API_URL || 'http://localhost:5000';
+  const pythonApiUrl = process.env.REACT_APP_PYTHON_API_URL || 'http://localhost:5001';
+  // ---------------------------------------------------------
+
   // Function to verify account number with backend
   const handleAccountVerification = async () => {
     setError(''); // Clear previous error messages
@@ -25,7 +30,7 @@ const VerificationPage = () => {
     }
 
     try {
-      const response = await fetch('http://localhost:5000/api/auth/check-account', {
+      const response = await fetch(`${nodeApiUrl}/api/auth/check-account`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ accountNumber }),
@@ -61,7 +66,7 @@ const VerificationPage = () => {
     formData.append('verifying_signature', image);
 
     try {
-      const response = await fetch('http://127.0.0.1:5000/api/signature/verify', {
+      const response = await fetch(`${pythonApiUrl}/api/signature/verify`, {
         method: 'POST',
         body: formData,
       });
@@ -71,7 +76,7 @@ const VerificationPage = () => {
       console.log(data);
 
       // Update verification status, similarity, and reference signature
-      setVerificationStatus(data.result === 'Verified' ? 'Verified' : 'Forged');
+      setVerificationStatus(data.result === 'Genuine' ? 'Verified' : 'Forged');
       setSimilarity(data.similarity || null);
       setReferenceSignature(data.referenceSignature || null); // Assuming the backend provides this
       setShowModal(true);
