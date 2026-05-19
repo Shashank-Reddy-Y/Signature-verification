@@ -38,7 +38,10 @@ const SignupPage = () => {
     }
 
     try {
-      const response = await fetch('http://localhost:5000/api/auth/signup', {
+      // --- DEPLOYMENT FIX: Added apiUrl to switch between localhost and Vercel ---
+      const apiUrl = process.env.REACT_APP_NODE_API_URL || 'http://localhost:5000';
+      const response = await fetch(`${apiUrl}/api/auth/signup`, {
+      // ---------------------------------------------------------------------------
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
