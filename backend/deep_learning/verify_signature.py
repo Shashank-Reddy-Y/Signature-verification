@@ -1,49 +1,41 @@
 import numpy as np
 import os
-import gdown
-import uuid
 from flask import Flask, request, jsonify
-from tensorflow.keras.models import Model, load_model
-from tensorflow.keras.preprocessing import image
 from sklearn.metrics.pairwise import cosine_similarity
 from flask_cors import CORS
 import cv2
 import base64
 from pymongo import MongoClient
+from dotenv import load_dotenv
 
-# MongoDB connection
+# TFLite Runtime (Super lightweight!)
+import tflite_runtime.interpreter as tflite
+
+load_dotenv()
+
 MONGO_URI = os.getenv("MONGO_URI")
-
 if not MONGO_URI:
     raise ValueError("MONGO_URI environment variable not set")
 
 mongo_client = MongoClient(MONGO_URI)
-db = mongo_client.yourdb
+db_name = os.getenv("MONGO_DB_NAME", "bank_data")
+db = mongo_client[db_name]
 collection = db.accounts
 
-
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-
 MODEL_DIR = os.path.join(BASE_DIR, "models")
-
-os.makedirs(MODEL_DIR, exist_ok=True)
-
-MODEL_PATH = os.path.join(
-    MODEL_DIR,
-    "Signature_verify_model.h5"
-)
+# Pointing to our newly created TFLite model
+MODEL_PATH = os.path.join(MODEL_DIR, "feature_extractor.tflite")
 
 if not os.path.exists(MODEL_PATH):
+    raise FileNotFoundError(f"Missing model file: {MODEL_PATH}. Please upload the .tflite file.")
 
-    file_id = "1IcDnVXyn1oYnBLhdOXHofkhj4zWv68Ap"
+# --- TFLITE INITIALIZATION ---
+interpreter = tflite.Interpreter(model_path=MODEL_PATH)
+interpreter.allocate_tensors()
+input_details = interpreter.get_input_details()
+output_details = interpreter.get_output_details()
 
-    url = f"https://drive.google.com/uc?export=download&id={file_id}"
-
-    gdown.download(url, MODEL_PATH, quiet=False)
-
-trained_model = load_model(MODEL_PATH)
-
-# Create Flask app
 app = Flask(__name__)
 CORS(app, resources={r"/*": {"origins": "*"}})
 
@@ -51,70 +43,55 @@ CORS(app, resources={r"/*": {"origins": "*"}})
 def health():
     return jsonify({"status": "running"})
 
-# Function to retrieve and store the signature in a file
-def retrieve_and_store_signature(account_number):
+def retrieve_signature_bytes(account_number):
     record = collection.find_one({"accountNumber": str(account_number)})
     if record and "image" in record:
         signature_data = record["image"]
-        if isinstance(signature_data, str):  # Decode base64 string
+        if isinstance(signature_data, str): 
             signature_data = base64.b64decode(signature_data)
-        stored_signature = np.frombuffer(signature_data, dtype=np.uint8)
-        stored_signature = cv2.imdecode(stored_signature, cv2.IMREAD_GRAYSCALE)
-        stored_signature = cv2.resize(stored_signature, (1024, 1024))  # Resize for consistency
-
-        # Save the stored signature to a file
-        stored_signature_path = f"{uuid.uuid4()}_stored.jpg"
-        cv2.imwrite(stored_signature_path, stored_signature)
-
-        return stored_signature_path
+        return signature_data
     else:
         raise ValueError("Signature not found in the database.")
 
-# Feature extraction model
-def create_advanced_embedding_model(trained_model):
-    feature_extractor = Model(inputs=trained_model.input, outputs=trained_model.layers[-8].output)
-    return feature_extractor
-
-feature_extractor = create_advanced_embedding_model(trained_model)
-
-# Image preprocessing function
-def preprocess_image(image_path):
-    img = image.load_img(image_path, target_size=(224, 224))
-    img_array = image.img_to_array(img)
+def preprocess_image_from_memory(image_bytes):
+    img_array = np.frombuffer(image_bytes, dtype=np.uint8)
+    img = cv2.imdecode(img_array, cv2.IMREAD_COLOR) 
+    img = cv2.resize(img, (224, 224))
+    
+    # TFLite expects a very specific format (float32)
+    img_array = img.astype(np.float32)
     img_array = np.expand_dims(img_array, axis=0) / 255.0
     return img_array
 
-# Signature verification endpoint
+def extract_features(img_array):
+    # Set the tensor to point to the input data to be inferred
+    interpreter.set_tensor(input_details[0]['index'], img_array)
+    # Run the inference
+    interpreter.invoke()
+    # Extract the output
+    return interpreter.get_tensor(output_details[0]['index']).flatten()
+
 @app.route('/api/signature/verify', methods=['POST'])
 def verify_signature():
     try:
+        if 'account_number' not in request.form or 'verifying_signature' not in request.files:
+            return jsonify({"error": "Missing required fields"}), 400
+
         account_number = request.form['account_number']
         verifying_signature_file = request.files['verifying_signature']
 
-        # Retrieve and save the stored signature
-        stored_signature_path = retrieve_and_store_signature(account_number)
-        
-        # Save the verifying signature temporarily
-        verifying_signature_path = f"{uuid.uuid4()}_verify.jpg"
-        verifying_signature_file.save(verifying_signature_path)
-        
-        # Preprocess images
-        stored_image = preprocess_image(stored_signature_path)
-        verifying_image = preprocess_image(verifying_signature_path)
+        stored_signature_bytes = retrieve_signature_bytes(account_number)
+        verifying_signature_bytes = verifying_signature_file.read()
 
-        # Extract embeddings
-        stored_embedding = feature_extractor.predict(stored_image).flatten()
-        verifying_embedding = feature_extractor.predict(verifying_image).flatten()
+        stored_image = preprocess_image_from_memory(stored_signature_bytes)
+        verifying_image = preprocess_image_from_memory(verifying_signature_bytes)
 
-        # Calculate cosine similarity
+        # Use the TFLite extraction function
+        stored_embedding = extract_features(stored_image)
+        verifying_embedding = extract_features(verifying_image)
+
         similarity = cosine_similarity([stored_embedding], [verifying_embedding])[0][0]
-        if os.path.exists(stored_signature_path):
-            os.remove(stored_signature_path)
-            
-        if os.path.exists(verifying_signature_path):
-            os.remove(verifying_signature_path)
 
-        # Threshold for decision
         threshold = 0.8
         result = "Genuine" if similarity > threshold else "Forged"
 
