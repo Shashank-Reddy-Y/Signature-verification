@@ -46,7 +46,10 @@ const UploadPage = () => {
     try {
       const base64Image = await convertToBase64(image); // Convert image to Base64 string
 
-      const response = await fetch('http://localhost:5000/api/account/add-account', {
+      // --- DEPLOYMENT FIX: Added apiUrl to switch between localhost and Vercel ---
+      const apiUrl = process.env.REACT_APP_NODE_API_URL || 'http://localhost:5000';
+      const response = await fetch(`${apiUrl}/api/account/add-account`, {
+      // ---------------------------------------------------------------------------
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
