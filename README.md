@@ -1,4 +1,4 @@
-# [🖋️ Signare: AI-Powered Bank Signature Verification System](https://signature-verification-one.vercel.app/)
+# [🖋️ Signare](https://signature-verification-one.vercel.app/): AI-Powered Bank Signature Verification System
 
 ![React](https://img.shields.io/badge/Frontend-React-blue)
 ![Node.js](https://img.shields.io/badge/Backend-Node.js-green)
