@@ -13,7 +13,7 @@
 In the banking and financial sector, manual signature verification is a critical but deeply flawed process. It is time-consuming, highly subjective, and prone to human error. Human tellers often struggle to detect sophisticated forgeries, leading to millions of dollars in financial fraud, identity theft, and operational bottlenecks. 
 
 ## 💡 What It Does (The Solution)
-Signare eliminates human error by utilizing a **Siamese Neural Network** (optimized via TensorFlow Lite) to verify signatures mathematically. 
+Signare eliminates human error by utilizing a **Customized CNN model** (optimized via TensorFlow Lite) to verify signatures mathematically. 
 
 1. **Enrollment:** Bank administrators create customer accounts and upload a trusted "reference" signature to a secure MongoDB database.
 2. **Verification:** When a transaction occurs, the teller uploads the physical signature presented on the check/document.
